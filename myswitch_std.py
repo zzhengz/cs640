@@ -11,7 +11,7 @@ from switchyard.lib.packet import *
 from switchyard.lib.address import *
 from switchyard.lib.common import *
 import time
-#switch SDN
+#switch standard, not able to handle topology changes
 
 
 def main(net):
@@ -21,12 +21,9 @@ def main(net):
     #debug use, print out all available ports
 
 
-    portTable = dict()
     ethaddrTable = dict()
     portList = net.interfaces() 
     ethaddrList = [intf.ethaddr for intf in portList]
-    for port in portList:
-        portTable[port.name]=set()
 
     while True:
         try:
@@ -56,15 +53,11 @@ def main(net):
 
         if ethaddr_src in ethaddrTable and inputPortName!=ethaddrTable[ethaddr_src]:
             oldPortName = ethaddrTable[ethaddr_src]
-            portTable[oldPortName].remove(ethaddr_src)
             ethaddrTable[ethaddr_src] = inputPortName
-            portTable[inputPortName].add(ethaddr_src)
         elif ethaddr_src not in ethaddrTable:
             ethaddrTable[ethaddr_src] = inputPortName
-            portTable[inputPortName].add(ethaddr_src)
         #updating forwarding table
 
-        print("portTable: "+str(portTable))
         print("ethaddrTable: "+str(ethaddrTable))
 
         if ethaddr_dst in ethaddrList:
