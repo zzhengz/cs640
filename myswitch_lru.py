@@ -51,13 +51,7 @@ def main(net):
         ethaddrDst = packet[0].dst
         ethaddr_broadcast = EthAddr("ff:ff:ff:ff:ff:ff")
 
-        if ethaddrDst in lruEthNum:
-            for i in range(lruEthNum[ethaddrDst],lruSize-1):
-                lruNumEth[i]=lruNumEth[i+1]
-                lruEthNum[lruNumEth[i]] -= 1
-            lruEthNum[ethaddrDst] = lruSize-1
-            lruNumEth[lruSize-1] = ethaddrDst
-        #touch destiny in LRU
+
 
         if ethaddrSrc in lruEthNum:     #if source in lru, make it newest
             for i in range(lruEthNum[ethaddrSrc],lruSize-1):
@@ -80,6 +74,15 @@ def main(net):
             lruEthNum[ethaddrSrc] = 4
             lruNumEth[4] = ethaddrSrc
         #touch source in LRU
+
+        if ethaddrDst in lruEthNum:
+            for i in range(lruEthNum[ethaddrDst],lruSize-1):
+                lruNumEth[i]=lruNumEth[i+1]
+                lruEthNum[lruNumEth[i]] -= 1
+            lruEthNum[ethaddrDst] = lruSize-1
+            lruNumEth[lruSize-1] = ethaddrDst
+        #updated 10-08-2016: should touch destiny after touching source in LRU
+
 
         forwardingTable[ethaddrSrc] = inputPortName
         #updating forwarding table and LRU

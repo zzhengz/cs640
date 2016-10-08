@@ -113,20 +113,20 @@ def hub_tests():
 
     reqpkt = mk_pkt(macH6, macH2, ipH6, ipH2)
     s.expect(PacketInputEvent("eth5", reqpkt, display=Ethernet), "LRU_switch_test: receive")
-    s.expect(PacketOutputEvent("eth1", reqpkt, display=Ethernet), "LRU_switch_test: [h4 h5 h1 h6 h2]")
+    s.expect(PacketOutputEvent("eth0", reqpkt,"eth1", reqpkt,"eth2", reqpkt,"eth3", reqpkt,"eth4", reqpkt, display=Ethernet), "LRU_switch_test: [h3 h4 h5 h1 h6]")
 
     reqpkt = mk_pkt(macH1, macH3, ipH1, ipH3)
     s.expect(PacketInputEvent("eth0", reqpkt, display=Ethernet), "LRU_switch_test: receive")
-    s.expect(PacketOutputEvent("eth1", reqpkt, "eth2", reqpkt, "eth3", reqpkt, "eth4", reqpkt, "eth5", reqpkt, display=Ethernet), "LRU_switch_test: shoud be broadcast [h4 h5 h6 h2 h1]")
+    s.expect(PacketOutputEvent( "eth2", reqpkt, display=Ethernet), "LRU_switch_test: shoud be broadcast [h4 h5 h6 h1 h3]")
 
     # test case 6: 
     reqpkt = mk_pkt(macH1, macP3, ipH1,'172.16.42.2')
     s.expect(PacketInputEvent("eth0", reqpkt, display=Ethernet), "LRU_switch_test: receive")
-    s.expect(PacketInputTimeoutEvent(1.0), "LRU_switch_test: sent to switch port 3, should do nothing here, [h4 h5 h6 h2 h1]")
+    s.expect(PacketInputTimeoutEvent(1.0), "LRU_switch_test: sent to switch port 3, should do nothing here, [h4 h5 h6 h3 h1]")
 
     reqpkt = mk_pkt(macH1, macH4, ipH1, ipH3)
     s.expect(PacketInputEvent("eth0", reqpkt, display=Ethernet), "LRU_switch_test: receive")
-    s.expect(PacketOutputEvent( "eth3", reqpkt,  display=Ethernet), "LRU_switch_test: shoud be broadcast [h4 h5 h6 h2 h1]")
+    s.expect(PacketOutputEvent( "eth3", reqpkt,  display=Ethernet), "LRU_switch_test: shoud be broadcast [h5 h6 h2 h1 h4]")
 
     return s
 
