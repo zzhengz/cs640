@@ -107,26 +107,25 @@ def hub_tests():
     s.expect(PacketInputEvent("eth3", reqpkt, display=Ethernet), "traffic_switch_test: ")
     s.expect(PacketOutputEvent("eth0", reqpkt, display=Ethernet), "traffic_switch_test: [h1:4 h2:3 h3:0 h4:0]")
 
-    reqpkt = mk_pkt(macH4, macH1, ipH4, ipH1)    #[h1:5 h2:3 h3:0 h4:1]
+    reqpkt = mk_pkt(macH4, macH1, ipH4, ipH1)    #[h1:5 h2:3 h3:0 h4:0]
     s.expect(PacketInputEvent("eth3", reqpkt, display=Ethernet), "traffic_switch_test: ")
     s.expect(PacketOutputEvent("eth0", reqpkt, display=Ethernet), "traffic_switch_test: [h1:5 h2:3 h3:0 h4:1]")
+
+    reqpkt = mk_pkt(macH1, macH4, ipH4, ipH1)    #[h1:5 h2:3 h3:0 h4:1]
+    s.expect(PacketInputEvent("eth0", reqpkt, display=Ethernet), "traffic_switch_test: ")
+    s.expect(PacketOutputEvent("eth3", reqpkt, display=Ethernet), "traffic_switch_test: [h1:5 h2:3 h3:0 h4:1]")
 
     reqpkt = mk_pkt(macH5, macH1, ipH5, ipH1)    #[h1:6 h2:3 h3:0 h4:1 h5:0]
     s.expect(PacketInputEvent("eth4", reqpkt, display=Ethernet), "traffic_switch_test: ")
     s.expect(PacketOutputEvent("eth0", reqpkt, display=Ethernet), "traffic_switch_test: [h1:6 h2:3 h3:0 h4:1 h5:0]")
 
-    reqpkt = mk_pkt( macH1, macH3, ipH1, ipH3)    #[h1:7 h2:3 h3:1 h4:1 h5:0]
+    reqpkt = mk_pkt( macH6, macH5, ipH1, ipH3)    #[h1:7 h2:3 h3:1 h4:1 h6:0]
     s.expect(PacketInputEvent("eth0", reqpkt, display=Ethernet), "traffic_switch_test: ")
-    s.expect(PacketOutputEvent("eth2", reqpkt, display=Ethernet), "traffic_switch_test: [h1:7 h2:3 h3:0 h4:1 h5:0]")
+    s.expect(PacketOutputEvent("eth1", reqpkt, "eth2", reqpkt, "eth3", reqpkt, "eth4", reqpkt, "eth5", reqpkt, display=Ethernet), "broadcast traffic_switch_test: [h1:7 h2:3 h3:1 h4:1 h6:0]")
 
-    reqpkt = mk_pkt(macH6, macH2, ipH6, ipH2)    #[h1:6 h2:3 h3:1 h4:1 h6:0]  h5 got evicted
-    s.expect(PacketInputEvent("eth5", reqpkt, display=Ethernet), "traffic_switch_test: ")
-    s.expect(PacketOutputEvent("eth1", reqpkt, display=Ethernet), "traffic_switch_test: [h1:6 h2:3 h4:1 h5:2 h6:0]  h3 got evicted")
-
-    reqpkt = mk_pkt(macH1, macH5, ipH1, ipH5)
+    reqpkt = mk_pkt( macH1, macH5, ipH1, ipH3)    #[h1:7 h2:3 h3:1 h4:1 h6:0]
     s.expect(PacketInputEvent("eth0", reqpkt, display=Ethernet), "traffic_switch_test: ")
-    s.expect(PacketOutputEvent("eth1", reqpkt, "eth2", reqpkt, "eth3", reqpkt, "eth4", reqpkt, "eth5", reqpkt, display=Ethernet), "traffic_switch_test: shoud be broadcast [h1:6 h2:3 h4:1 h5:2 h6:0]")
-
+    s.expect(PacketOutputEvent("eth1", reqpkt, "eth2", reqpkt, "eth3", reqpkt, "eth4", reqpkt, "eth5", reqpkt, display=Ethernet), "broadcast traffic_switch_test: [h1:7 h2:3 h3:1 h4:1 h5:0]")
 
 
     return s

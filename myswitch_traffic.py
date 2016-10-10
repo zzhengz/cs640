@@ -48,12 +48,6 @@ def main(net):
         ethaddrDst = packet[0].dst
         ethaddr_broadcast = EthAddr("ff:ff:ff:ff:ff:ff")
 
-        dstPortName = "broadcast"
-        if ethaddrDst in trafficTable:
-            trafficTable[ethaddrDst]+=1
-            dstPortName = forwardingTable[ethaddrDst]
-
-        
         if ethaddrSrc not in trafficTable and len(trafficTable)>=5:     #evict entry with least traffic
             ethToEvict = min(trafficTable, key = lambda x: trafficTable.get(x))
             print("evict %s from traffic table" % (str(ethToEvict),))
@@ -61,6 +55,9 @@ def main(net):
             forwardingTable.pop(ethToEvict)
         if ethaddrSrc not in trafficTable:    #add source into traffic table
             trafficTable[ethaddrSrc] = 0
+
+        if ethaddrDst in trafficTable:
+            trafficTable[ethaddrDst]+=1
 
         forwardingTable[ethaddrSrc] = inputPortName
         #updating forwarding table 
@@ -72,15 +69,15 @@ def main(net):
             print("destination is switch itself")
             print('*'*100)
             continue    #destination is switch itself
-        elif dstPortName =="broadcast":
+        elif ethaddrDst not in forwardingTable:
             print("broadcast")
             for intf in net.interfaces():
                 #print (intf.name, intf.ethaddr, intf.ipaddr, intf.netmask)
                 if inputPortName != intf.name:
                     net.send_packet(intf.name, packet)
         else:
-            net.send_packet(dstPortName, packet)
-            print("unicast destiny port:" + dstPortName)
+            net.send_packet(forwardingTable[ethaddrDst], packet)
+            print("unicast destiny port:" + forwardingTable[ethaddrDst])
         print('*'*100)
         #net.send_packet(inputPortName, packet)
 
