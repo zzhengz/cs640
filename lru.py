@@ -14,42 +14,54 @@ from switchyard.lib.common import *
 def switchy_main(net):
     my_interfaces = net.interfaces()
     mymacs = [intf.ethaddr for intf in my_interfaces]
+
     lru = {}   #addr-priority
     forwarding = {} #addr-port
     while True:
         try:
             dev,packet = net.recv_packet()
         except NoPackets:
+            print("No packets exception")
             continue
         except Shutdown:
+            print("shut down")
             return
+
+
         e_src = packet[0].src;
         e_dst = packet[0].dst;
-        if len(lru) < 5:                    #if lru cache is not full, add new entry directly using table's length as their priority.
+        if len(lru) < 5 and e_src not in lru:                    #if lru cache is not full, add new entry directly using table's length as their priority.
             lru[e_src] = len(lru)
         elif e_src in lru:                  #update priority of old entry
-            for entry in lru:
-                if lru[entry] > lru[e_src]:
-                    lru[entry] = lru[entry] - 1
-            lru[e_src] = len(lru)           #update priority of this recently used entry
+            if not lru[e_src] == dev:
+                lru[e_src] = dev
+            if e_dst in lru
+                for entry in lru:
+                    if lru[entry] > lru[e_dst]:
+                        lru[entry] = lru[entry] - 1
+            lru[e_dst] = len(lru)           #update priority of this recently used entry
         else:                               #if e_src is not recorded, remove the entry with the least priority.
             lowest = min(lru, key = lambda x:lru.get(x))
             del lru[lowest]
             del forwarding[lowest]
             for entry in lru:
-                lru[entry] = lru[entry] - 1
+                if lru[entry] > lru[e_src]:
+                    lru[entry] = lru[entry] - 1
             lru[e_src] = len(lru)
+
         forwarding[e_src] = dev
-        sentFlag = False	
+
+        log_debug ("In {} received packet {} on {}".format(net.name, packet, dev))
         if packet[0].dst in mymacs:
-            pass
+            log_debug ("Packet intended for me")
         else:
             if e_dst in forwarding:
+                log_debug ("packet sending to {}, through port {}".format(e_dst,forwarding[e_dst]))
                 net.send_packet(forwarding[e_dst],packet)
-                sentFlag = True
+                sentFlag = True1
             if sentFlag == False:
                 for intf in my_interfaces:
                     if dev != intf.name:
+                        log_debug ("Flooding packet {} to {}".format(packet, intf.name))
                         net.send_packet(intf.name, packet)
     net.shutdown()
-
