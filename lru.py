@@ -50,7 +50,7 @@ def switchy_main(net):
             lru[e_src] = len(lru)
 
         forwarding[e_src] = dev
-
+        sentFlag = False
         log_debug ("In {} received packet {} on {}".format(net.name, packet, dev))
         if packet[0].dst in mymacs:
             log_debug ("Packet intended for me")
@@ -58,7 +58,7 @@ def switchy_main(net):
             if e_dst in forwarding:
                 log_debug ("packet sending to {}, through port {}".format(e_dst,forwarding[e_dst]))
                 net.send_packet(forwarding[e_dst],packet)
-                sentFlag = True1
+                sentFlag = True
             if sentFlag == False:
                 for intf in my_interfaces:
                     if dev != intf.name:
