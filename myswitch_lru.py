@@ -25,12 +25,7 @@ def main(net):
         ethaddrSrc = packet[0].src
         ethaddrDst = packet[0].dst
         ethaddr_broadcast = EthAddr("ff:ff:ff:ff:ff:ff")
-        if ethaddrSrc in lru:     #if source in lru, make it newest
-            for eth in lru:
-                if lru[eth]<lru[ethaddrSrc]:
-                    lru[eth]+=1
-            lru[ethaddrSrc] = 0
-        else:
+        if ethaddrSrc not in lru:     #if source not in lru, add it in
             ethaToRemove = None
             for eth in lru:
                 lru[eth]+=1
