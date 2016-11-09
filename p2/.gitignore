@@ -1,0 +1,12 @@
+# Compiled source #
+###################
+*.pyc
+
+
+#vim recover file
+*.py~
+
+*.md~
+
+#vim backup file
+*.swp
