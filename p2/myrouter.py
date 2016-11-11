@@ -99,10 +99,12 @@ class Router(object):
             if arpPkt is not None:
                 if gotpkt:
                     log_debug("Got a packet: {}".format(str(pkt)))
-            
+                self.mapCache[arpPkt.senderprotoaddr] = arpPkt.senderhwaddr
                 if arpPkt.operation == ArpOperation.Request and arpPkt.targetprotoaddr in self.switchPortIPaddrList:
                     targetIntf = self.net.interface_by_ipaddr(arpPkt.targetprotoaddr)
                     response = create_ip_arp_reply(targetIntf.ethaddr,arpPkt.senderhwaddr,targetIntf.ipaddr,arpPkt.senderprotoaddr)
+                    print("packet outgoing (on port:"+dev+"):")
+                    print(str(response) )
                     self.net.send_packet(dev, response)
                 elif arpPkt.operation == ArpOperation.Reply and arpPkt.targetprotoaddr in self.switchPortIPaddrList and arpPkt.senderprotoaddr in self.pendingICMP:
                     task = self.pendingICMP[arpPkt.senderprotoaddr]
@@ -139,6 +141,7 @@ class Router(object):
                     if (int(target) & int(mask)) == (int(dst) & int(mask)):  #longest match found!
                         if dst in self.mapCache:
                             EthHeader = pkt.get_header("Ethernet")
+                            EthHeader.src = self.net.interface_by_name(ft_entry[4]).ethaddr
                             EthHeader.dst = self.mapCache[dst]  #update ethernet header's dst field
 
                             print("packet outgoing (on port:"+str(ft_entry[4])+"):")
@@ -153,6 +156,8 @@ class Router(object):
                             self.pendingICMP[targetIPaddr] = Task(pktToSend=pkt, arpToSend = arpRequest, port = ft_entry[4],timeStamp = time.time())
                             print("packet outgoing (on port:"+str(ft_entry[4])+"):")
                             print(str(arpRequest) )
+                            print("entry:")
+                            print(ft_entry)
                             self.net.send_packet(ft_entry[4], arpRequest)
                         break
 
