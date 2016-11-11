@@ -35,11 +35,11 @@ class Router(object):
             netaddr = IPv4Network('0.0.0.0/'+str(intf.netmask))
             ft.append([str(intf.ipaddr),str(intf.netmask),str(intf.ipaddr),netaddr.prefixlen,intf.name])
         
-        #f = open('forwarding_table.txt', 'r')
-        #for line in f:
-        #    token = line.strip('\n').split(' ')
-        #    netIp = IPv4Network(str(token[0])+'/'+str(token[1]))            
-        #    ft.append([token[0],token[1],token[2],netIp.prefixlen, token[3]])
+        f = open('forwarding_table.txt', 'r')
+        for line in f:
+            token = line.strip('\n').split(' ')
+            netIp = IPv4Network(str(token[0])+'/'+str(token[1]))            
+            ft.append([token[0],token[1],token[2],netIp.prefixlen, token[3]])
 
         ft = sorted(ft,key = lambda k:k[3], reverse = True) #sort forwarding table by prefixlen
         return ft
@@ -64,24 +64,15 @@ class Router(object):
             print("packet headers:")
             print(str(pkt.headers()))
 
-            arpPkt = pkt.get_header("Arp")
-            Ipv4Header = pkt.get_header("IPv4")
+            arpPkt = pkt.get_header("Arp")          #header extraction here
+            Ipv4Header = pkt.get_header("IPv4")          #header extraction here
             if Ipv4Header is not None:
-                Ipv4Header.ttl=Ipv4Header.ttl-1      #decrement ttl here
-            ICMPHeader = pkt.get_header("ICMP")
-            if ICMPHeader is not None:
-                print("ICMPHeader:")
-                print(ICMPHeader)
-                print("ICMPHeader.icmptype:")
-                print(ICMPHeader.icmptype)
-                print("ICMPHeader.icmpdata.data:")
-                print(ICMPHeader.icmpdata.data)
+                Ipv4Header.ttl -=1;
+
                 
             if arpPkt is not None:
                 if gotpkt:
                     log_debug("Got a packet: {}".format(str(pkt)))
-
-
             
                 if arpPkt.operation == ArpOperation.Request and arpPkt.targetprotoaddr in self.switchPortIPaddrList:
                     targetIntf = self.net.interface_by_ipaddr(arpPkt.targetprotoaddr)
@@ -91,15 +82,10 @@ class Router(object):
                 
                     pktToSend,portToSend = self.pendingICMP[arpPkt.senderprotoaddr]
                     EthHeader = pktToSend.get_header("Ethernet")
+                    Ipv4Header = pktToSend.get_header("IPv4")
+                    EthHeader.src = self.net.interface_by_name(portToSend).ethaddr
                     EthHeader.dst = arpPkt.senderhwaddr  #update ethernet header's dst field
-                    ICMPHeader = pktToSend.get_header("ICMP")
-                    #ICMPHeader.icmpdata = ICMPEchoRequest()
-                    #ICMPHeader.icmpdata = None
-                    print("sending IP packet on arp received")
-                    print("pktToSend:")
-                    print(pktToSend)
-                    print("portToSend:")
-                    print(portToSend)
+
                     self.net.send_packet(portToSend, pktToSend)
                 else:
                     pass
@@ -107,6 +93,7 @@ class Router(object):
                     #    if dev != intf.name:
                     #        self.net.send_packet(intf.name,pkt)
             elif Ipv4Header is not None:
+                ethPacketToSend = Ethernet()
                 for ft_entry in self.ftable:
                     target = IPv4Address(ft_entry[0])
                     mask = IPv4Address(ft_entry[1])
@@ -117,9 +104,9 @@ class Router(object):
                             EthHeader.dst = self.mapCache[dst]  #update ethernet header's dst field
                             self.net.send_packet(ft_entry[4], pkt)
                         else: # no IPaddr-HWaddr pair found in cache
-                            senderIPaddr = target
+                            senderIPaddr = self.net.interface_by_name(ft_entry[4]).ipaddr
                             targetIPaddr = dst
-                            senderHWaddr = self.net.interface_by_ipaddr(target).ethaddr
+                            senderHWaddr = self.net.interface_by_name(ft_entry[4]).ethaddr
                             arpRequest = create_ip_arp_request(senderHWaddr, senderIPaddr, targetIPaddr)
                             self.pendingICMP[targetIPaddr] = [pkt,ft_entry[4]]
                             self.net.send_packet(ft_entry[4], arpRequest)
