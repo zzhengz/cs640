@@ -22,22 +22,10 @@ class Task(object):
 class Router(object):
     def __init__(self, net):
 
-        self.mapCache = dict()  #map: IP address -> HW address
-        self.taskQueue = []
-        self.pendingICMP = dict()  #map: IP address -> ICMP packet
         self.net = net
-        # other initialization stuff here
-        self.switchPortEthaddrList = [intf.ethaddr for intf in net.interfaces() ]
-        self.switchPortIPaddrList = [intf.ipaddr for intf in net.interfaces() ]
-        self.ftable = self.build_ft()        
-        print(self.switchPortEthaddrList)
+        print("name   --    ethernet Address -- IP Network Address -- IP Network mask")
         for intf in net.interfaces():
-            print(str(intf.name)+"--"+str(intf.ethaddr) + "--" + str(intf.ipaddr))
-
-        print(self.ftable)
-
-        print("#"*100)
-
+            print(str(intf.name)+" -- "+str(intf.ethaddr) + " -- " + str(intf.ipaddr) + " -- " + str(intf.netmask))
 
     def build_ft(self):
         ft = []
@@ -55,13 +43,22 @@ class Router(object):
         return ft
 
     def router_main(self):    
+
+
+        addrCache = dict()  #map: IP address -> HW address
+        taskQueue = []
+        pendingICMP = dict()  #map: IP address -> ICMP packet
+        switchPortIPaddrList = [intf.ipaddr for intf in self.net.interfaces() ]
+        ftable = self.build_ft()        
+
+
         '''
         Main method for router; we stay in a loop in this method, receiving
         packets until the end of time.
         '''
         while True:
-            for target in self.taskQueue:
-                task = self.pendingICMP[target]
+            for target in taskQueue:        #send out arp periodically
+                task = pendingICMP[target]
                 if task.retries<5 and time.time() -task.timeStamp >=1:
                     task.retries+=1
                     self.net.send_packet(task.port,task.arpToSend)
@@ -88,16 +85,14 @@ class Router(object):
             if arpPkt is not None:
                 if gotpkt:
                     log_debug("Got a packet: {}".format(str(pkt)))
-                self.mapCache[arpPkt.senderprotoaddr] = arpPkt.senderhwaddr
+                addrCache[arpPkt.senderprotoaddr] = arpPkt.senderhwaddr
 
-                if arpPkt.operation == ArpOperation.Request and arpPkt.targetprotoaddr in self.switchPortIPaddrList:
+                if arpPkt.operation == ArpOperation.Request and arpPkt.targetprotoaddr in switchPortIPaddrList:     #answer arp if target is router
                     targetIntf = self.net.interface_by_ipaddr(arpPkt.targetprotoaddr)
                     response = create_ip_arp_reply(targetIntf.ethaddr,arpPkt.senderhwaddr,targetIntf.ipaddr,arpPkt.senderprotoaddr)
-                    print("packet outgoing (on port:"+dev+"):")
-                    print(str(response) )
                     self.net.send_packet(dev, response)
-                elif arpPkt.operation == ArpOperation.Reply and arpPkt.targetprotoaddr in self.switchPortIPaddrList and arpPkt.senderprotoaddr in self.pendingICMP:
-                    task = self.pendingICMP[arpPkt.senderprotoaddr]
+                elif arpPkt.operation == ArpOperation.Reply and arpPkt.targetprotoaddr in switchPortIPaddrList and arpPkt.senderprotoaddr in pendingICMP:
+                    task = pendingICMP[arpPkt.senderprotoaddr]
 
                     for pktToSend in task.pktToSend:
                         EthHeader = pktToSend.get_header("Ethernet")
@@ -105,47 +100,40 @@ class Router(object):
                         EthHeader.src = self.net.interface_by_name(task.port).ethaddr
                         EthHeader.dst = arpPkt.senderhwaddr  #update ethernet header's dst field
                         self.net.send_packet(task.port, pktToSend)
-                    self.pendingICMP.pop(arpPkt.senderprotoaddr)
-                    self.taskQueue.remove(arpPkt.senderprotoaddr)
+                    pendingICMP.pop(arpPkt.senderprotoaddr)
+                    taskQueue.remove(arpPkt.senderprotoaddr)
                 else:   #drop packet
                     pass
-            elif Ipv4Header is not None and Ipv4Header.dst in self.pendingICMP:
-                task = self.pendingICMP[Ipv4Header.dst]
+            elif Ipv4Header is not None and Ipv4Header.dst in pendingICMP:
+                task = pendingICMP[Ipv4Header.dst]
                 task.pktToSend.append(pkt)
                 continue
             elif Ipv4Header is not None:
                 ethPacketToSend = Ethernet()
-                for ft_entry in self.ftable:
+                for ft_entry in ftable:
                     target = IPv4Address(ft_entry[0])
                     mask = IPv4Address(ft_entry[1])
                     dst = Ipv4Header.dst
                     if (int(target) & int(mask)) == (int(dst) & int(mask)):  #longest match found!
-                        if dst in self.mapCache:
+                        if dst in addrCache:
                             EthHeader = pkt.get_header("Ethernet")
                             EthHeader.src = self.net.interface_by_name(ft_entry[4]).ethaddr
-                            EthHeader.dst = self.mapCache[dst]  #update ethernet header's dst field
+                            EthHeader.dst = addrCache[dst]  #update ethernet header's dst field
                             self.net.send_packet(ft_entry[4], pkt)
-                        elif ft_entry[2]!=ft_entry[0] and ft_entry[2] not in self.mapCache:
-                            senderIPaddr = self.net.interface_by_name(ft_entry[4]).ipaddr
-                            targetIPaddr = dst
-                            senderHWaddr = self.net.interface_by_name(ft_entry[4]).ethaddr
-                            arpRequest = create_ip_arp_request(senderHWaddr, senderIPaddr, ft_entry[2])
-                            self.taskQueue.append(IPv4Address(ft_entry[2]))
-                            self.pendingICMP[IPv4Address(ft_entry[2])] = Task(pktToSend=pkt, arpToSend = arpRequest, port = ft_entry[4],timeStamp = time.time())
-                            self.net.send_packet(ft_entry[4], arpRequest)
-
 
                         else: # no IPaddr-HWaddr pair found in cache
+                            if ft_entry[2]!=ft_entry[0] and ft_entry[2] not in addrCache:     #if next-hop is current network itself
+                                targetIPaddr = IPv4Address(ft_entry[2])
+                            else:
+                                targetIPaddr = dst
                             senderIPaddr = self.net.interface_by_name(ft_entry[4]).ipaddr
-                            targetIPaddr = dst
                             senderHWaddr = self.net.interface_by_name(ft_entry[4]).ethaddr
                             arpRequest = create_ip_arp_request(senderHWaddr, senderIPaddr, targetIPaddr)
-                            self.taskQueue.append(targetIPaddr)
-                            self.pendingICMP[targetIPaddr] = Task(pktToSend=pkt, arpToSend = arpRequest, port = ft_entry[4],timeStamp = time.time())
+                            taskQueue.append(targetIPaddr)
+                            pendingICMP[targetIPaddr] = Task(pktToSend=pkt, arpToSend = arpRequest, port = ft_entry[4],timeStamp = time.time())
                             self.net.send_packet(ft_entry[4], arpRequest)
                         break
 
-            print("#"*100)
 def switchy_main(net):
     '''
     Main entry point for router.  Just create Router
