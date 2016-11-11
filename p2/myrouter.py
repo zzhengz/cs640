@@ -63,19 +63,14 @@ class Router(object):
             for target in self.taskQueue:
                 task = self.pendingICMP[target]
                 if task.retries<5 and time.time() -task.timeStamp >=1:
-                    print("packet outgoing (on port:"+str(task.port)+"):")
-                    print(str(task.arpToSend) )
-                    print("#"*100)
                     task.retries+=1
                     self.net.send_packet(task.port,task.arpToSend)
                     task.timeStamp = time.time()
 
             gotpkt = True
             try:
-                print("start to receive!")
                 dev,pkt = self.net.recv_packet(timeout=1.0)
             except NoPackets:
-                print("Got no packets signal!")
                 log_debug("No packets available in recv_packet")
                 gotpkt = False
             except Shutdown:
@@ -84,22 +79,17 @@ class Router(object):
             if gotpkt==False:
                 continue
 
-            print("packet incoming:")
-            print(str(pkt))
-            print("packet headers:")
-            print(str(pkt.headers()))
-
-
             arpPkt = pkt.get_header("Arp")          #header extraction here
             Ipv4Header = pkt.get_header("IPv4")          #header extraction here
             if Ipv4Header is not None:
-                Ipv4Header.ttl -=1;
+                Ipv4Header.ttl -=1;         #decrement ttl
 
                 
             if arpPkt is not None:
                 if gotpkt:
                     log_debug("Got a packet: {}".format(str(pkt)))
                 self.mapCache[arpPkt.senderprotoaddr] = arpPkt.senderhwaddr
+
                 if arpPkt.operation == ArpOperation.Request and arpPkt.targetprotoaddr in self.switchPortIPaddrList:
                     targetIntf = self.net.interface_by_ipaddr(arpPkt.targetprotoaddr)
                     response = create_ip_arp_reply(targetIntf.ethaddr,arpPkt.senderhwaddr,targetIntf.ipaddr,arpPkt.senderprotoaddr)
@@ -114,21 +104,12 @@ class Router(object):
                         Ipv4Header = pktToSend.get_header("IPv4")
                         EthHeader.src = self.net.interface_by_name(task.port).ethaddr
                         EthHeader.dst = arpPkt.senderhwaddr  #update ethernet header's dst field
-
-                        print("packet outgoing (on port:"+str(task.port)+"):")
-                        print(str(pktToSend) )
-
                         self.net.send_packet(task.port, pktToSend)
                     self.pendingICMP.pop(arpPkt.senderprotoaddr)
                     self.taskQueue.remove(arpPkt.senderprotoaddr)
-                else:
+                else:   #drop packet
                     pass
-                    #for intf in self.net.interfaces():
-                    #    if dev != intf.name:
-                    #        self.net.send_packet(intf.name,pkt)
             elif Ipv4Header is not None and Ipv4Header.dst in self.pendingICMP:
-                print("task in queue")
-                print("#"*100)
                 task = self.pendingICMP[Ipv4Header.dst]
                 task.pktToSend.append(pkt)
                 continue
@@ -143,10 +124,17 @@ class Router(object):
                             EthHeader = pkt.get_header("Ethernet")
                             EthHeader.src = self.net.interface_by_name(ft_entry[4]).ethaddr
                             EthHeader.dst = self.mapCache[dst]  #update ethernet header's dst field
-
-                            print("packet outgoing (on port:"+str(ft_entry[4])+"):")
-                            print(str(pkt) )
                             self.net.send_packet(ft_entry[4], pkt)
+                        elif ft_entry[2]!=ft_entry[0] and ft_entry[2] not in self.mapCache:
+                            senderIPaddr = self.net.interface_by_name(ft_entry[4]).ipaddr
+                            targetIPaddr = dst
+                            senderHWaddr = self.net.interface_by_name(ft_entry[4]).ethaddr
+                            arpRequest = create_ip_arp_request(senderHWaddr, senderIPaddr, ft_entry[2])
+                            self.taskQueue.append(IPv4Address(ft_entry[2]))
+                            self.pendingICMP[IPv4Address(ft_entry[2])] = Task(pktToSend=pkt, arpToSend = arpRequest, port = ft_entry[4],timeStamp = time.time())
+                            self.net.send_packet(ft_entry[4], arpRequest)
+
+
                         else: # no IPaddr-HWaddr pair found in cache
                             senderIPaddr = self.net.interface_by_name(ft_entry[4]).ipaddr
                             targetIPaddr = dst
@@ -154,17 +142,9 @@ class Router(object):
                             arpRequest = create_ip_arp_request(senderHWaddr, senderIPaddr, targetIPaddr)
                             self.taskQueue.append(targetIPaddr)
                             self.pendingICMP[targetIPaddr] = Task(pktToSend=pkt, arpToSend = arpRequest, port = ft_entry[4],timeStamp = time.time())
-                            print("packet outgoing (on port:"+str(ft_entry[4])+"):")
-                            print(str(arpRequest) )
-                            print("entry:")
-                            print(ft_entry)
                             self.net.send_packet(ft_entry[4], arpRequest)
                         break
 
-
-                if Ipv4Header.dst not in self.switchPortIPaddrList:
-                    #for intf in self.net.interfaces():
-                    pass
             print("#"*100)
 def switchy_main(net):
     '''
