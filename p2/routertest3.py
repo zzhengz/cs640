@@ -117,26 +117,6 @@ def forwarding_arp_tests():
     s.expect(PacketOutputEvent("router-eth1", pkt, display=IPv4,exact = False), 
              "IP packet to be forwarded to 10.10.123.123 should arrive on router-eth1")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     s.expect(PacketInputTimeoutEvent(1.0), "No packet received in 1.0 second")
     return s
 
