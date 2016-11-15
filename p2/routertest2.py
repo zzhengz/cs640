@@ -57,18 +57,49 @@ def forwarding_arp_tests():
 172.16.64.0 255.255.192.0 10.10.1.254 router-eth1
 10.100.0.0 255.255.0.0 172.16.42.2 router-eth2''')
 
-    reqpkt = mk_ping("20:00:00:00:00:01", "10:00:00:00:00:01", '192.168.1.100','172.16.42.2', ttl=64)
-    reqpkt2 = copy.deepcopy(reqpkt)
-    reqpkt2.get_header(Ethernet).src = EthAddr("10:00:00:00:00:03")
-    reqpkt2.get_header(Ethernet).dst = EthAddr("30:00:00:00:00:01")
+    ipR0 = '192.168.1.1'
+    ethR0 = '10:00:00:00:00:01'
 
-    arpreq = create_ip_arp_request("10:00:00:00:00:03", "172.16.42.1", "172.16.42.2")
-    arpresp = mk_arpresp(arpreq, "30:00:00:00:00:01") # , "10:00:00:00:00:03", "172.16.42.2", "172.16.42.1")
+    ipR1 = '10.10.0.1'
+    ethR1 = '10:00:00:00:00:02'
 
-    arpreq2 = create_ip_arp_request("10:00:00:00:00:01", "192.168.1.1", "192.168.1.100")
-    arpresp2 = mk_arpresp(arpreq2, "20:00:00:00:00:01") # , "10:00:00:00:00:01", "192.168.1.100", "192.168.1.1")
+    ipR2 = '172.16.42.1'
+    ethR2 = '10:00:00:00:00:03'
 
+    ipH1 = '192.168.1.239'
+    ethH1 = "ab:cd:ef:ab:cd:ef"
+
+    ipH2 = '192.168.1.126'
+    ethH2 = "ab:cc:cc:ab:cd:cc"
+
+    ipH3 = '172.16.42.2'
+    ethH3 = "ab:cd:00:ab:cd:00"
+
+    ipH4 = '10.10.50.250'
+    ethH4 = "12:34:00:31:cd:00"
+
+    ipH5 = '172.16.4.3'     #next-hop:192.168.1.2  port:'router-eth1'
+    ethH5 = "12:34:00:00:12:05"
+
+    reqpkt = mk_ping(ethH1, ethR0, ipH1,ipH4, ttl=64)
+    reqpkt2 = mk_ping(ethH3, ethR2, ipH3,ipH5, ttl=64)
+    reqpkt3 = mk_ping(ethH2, ethR0, ipH2,ipH4, ttl=64)
+
+    relaypkt = mk_ping(ethR1, ethH4, ipH1,ipH4, ttl=64)
+    relaypkt3 = mk_ping(ethR1, ethH4, ipH2,ipH4, ttl=64)
+    #create_ip_arp_reply(senderhwaddr, targethwaddr, senderprotoaddr, targetprotoaddr)
+    #create_ip_arp_request(senderhwaddr, senderprotoaddr, targetprotoaddr)
+
+    arpreq = create_ip_arp_request(ethR1, ipR1, ipH4)
+    arpreq2 = create_ip_arp_request(ethR0, ipR0, "192.168.1.2")
+
+    arpreply = create_ip_arp_reply(ethH4,ethR1, ipH4, ipR1)
+
+
+
+    #arpresp = create_ip_arp_reply(senderhwaddr, targethwaddr, senderprotoaddr, targetprotoaddr)
     resppkt = mk_ping("30:00:00:00:00:01", "10:00:00:00:00:03", '172.16.42.2', '192.168.1.100', reply=True, ttl=64)
+
     resppkt2 = copy.deepcopy(resppkt)
     resppkt2.get_header(Ethernet).src = EthAddr("10:00:00:00:00:01")
     resppkt2.get_header(Ethernet).dst = EthAddr("20:00:00:00:00:01")
@@ -77,22 +108,42 @@ def forwarding_arp_tests():
     ttlmatcher = '''lambda pkt: pkt.get_header(IPv4).ttl == 63'''
 
     s.expect(PacketInputEvent("router-eth0", reqpkt, display=IPv4), 
-             "IP packet to be forwarded to 172.16.42.2 should arrive on router-eth0")
-    s.expect(PacketOutputEvent("router-eth2", arpreq, display=Arp),
-             "Router should send ARP request for 172.16.42.2 out router-eth2 interface")
-    s.expect(PacketInputEvent("router-eth2", arpresp, display=Arp),
-             "Router should receive ARP response for 172.16.42.2 on router-eth2 interface")
-    s.expect(PacketOutputEvent("router-eth2", reqpkt2, display=IPv4, exact=False, predicates=[ttlmatcher]),
-             "IP packet should be forwarded to 172.16.42.2 out router-eth2")
-    s.expect(PacketInputEvent("router-eth2", resppkt, display=IPv4),
-             "IP packet to be forwarded to 192.168.1.100 should arrive on router-eth2")
-    s.expect(PacketOutputEvent("router-eth0", arpreq2, display=Arp),
-             "Router should send ARP request for 192.168.1.100 out router-eth0")
-    s.expect(PacketInputEvent("router-eth0", arpresp2, display=Arp),
-             "Router should receive ARP response for 192.168.1.100 on router-eth0")
-    s.expect(PacketOutputEvent("router-eth0", resppkt2, display=IPv4, exact=False, predicates=[ttlmatcher]),
-             "IP packet should be forwarded to 192.168.1.100 out router-eth0")
+             "IP packet to be forwarded to 10.10.50.250 should arrive on router-eth0")
+    s.expect(PacketOutputEvent("router-eth1", arpreq, display=Arp),
+             "Router should send ARP request for 10.10.50.250 out router-eth2 interface")
 
+    s.expect(PacketInputEvent("router-eth2", reqpkt2, display=IPv4), 
+             "IP packet to be forwarded to 172.16.42.2 should arrive on router-eth0")
+    s.expect(PacketOutputEvent("router-eth0", arpreq2, display=Arp),
+             "Router should send ARP request for 172.16.42.2 out router-eth2 interface")
+
+    s.expect(PacketInputTimeoutEvent(1.0), "No packet received in 1.0 second")
+
+    s.expect(PacketOutputEvent("router-eth1", arpreq, display=Arp),
+             "Router should send ARP request for 10.10.50.250 out router-eth2 interface")
+    s.expect(PacketOutputEvent("router-eth0", arpreq2, display=Arp),
+             "Router should send ARP request for 192.168.1.2 out router-eth2 interface")
+
+    s.expect(PacketInputEvent("router-eth0", reqpkt3, display=IPv4), 
+             "IP packet to be forwarded to 10.10.50.250 should arrive on router-eth0")
+
+    s.expect(PacketInputTimeoutEvent(1.0), "No packet received in 1.0 second")
+
+    s.expect(PacketOutputEvent("router-eth1", arpreq, display=Arp),
+             "Router should send ARP request for 10.10.50.250 out router-eth2 interface")
+    s.expect(PacketOutputEvent("router-eth0", arpreq2, display=Arp),
+             "Router should send ARP request for 192.168.1.2 out router-eth2 interface")
+
+    s.expect(PacketInputTimeoutEvent(0.5), "No packet received in 0.5 second")
+
+    s.expect(PacketInputEvent('router-eth1', arpreply, display=Arp), 
+             "ARP reply of  should arrive on router-eth1")
+
+    s.expect(PacketOutputEvent("router-eth1", relaypkt, display=IPv4, exact = False),
+             "Router should retransmit ICMP request for 10.10.50.250 out router-eth1 interface")
+
+    s.expect(PacketOutputEvent("router-eth1", relaypkt3, display=IPv4, exact = False),
+             "Router should retransmit ICMP request for 10.10.50.250 out router-eth1 interface")
     return s
 
 scenario = forwarding_arp_tests()

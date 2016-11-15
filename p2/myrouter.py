@@ -18,8 +18,8 @@ class Task(object):
         self.timeStamp = timeStamp
         self.port = port
         self.retries = 0
-        self.sender = sender
-        self.incomingPort = incomingPort
+        self.sender = [sender]
+        self.incomingPort = [incomingPort]
 
 class Router(object):
     def __init__(self, net):
@@ -80,16 +80,14 @@ class Router(object):
                     print("-")
                     print("task.pktToSend:")
                     print(task.pktToSend)
-                    for pktToSend in task.pktToSend:
-                        replyPkt = Ethernet() + IPv4() + ICMP()         #generate error ICMP here
-                        replyPkt.get_header("IPv4").dst = task.sender
-                        replyPkt.get_header("IPv4").src = self.net.interface_by_name(task.incomingPort).ipaddr
-                        replyPkt.get_header("IPv4").ttl = 16
+                    for i in range(len(task.pktToSend)):
+                        replyIPheader = IPv4(src=self.net.interface_by_name(task.incomingPort[i]).ipaddr,dst=task.sender[i],ttl=16)
+                        replyPkt = Ethernet() + replyIPheader + ICMP()         #generate error ICMP here
                         replyPkt.get_header("ICMP").icmpdata = ICMPDestinationUnreachable()
                         replyPkt.get_header("ICMP").icmpdata.data = b'E\x00\x00\x1c\x00\x00\x00\x00@\x01'
                         replyPkt.get_header("ICMP").icmpcode = ICMPCodeDestinationUnreachable.HostUnreachable
                         pkt = replyPkt
-                        dst = task.sender
+                        dst = task.sender[i]
 
                         ipToBeResolved = None
                         entry = self.get_first_entry(ftable,dst)
@@ -97,8 +95,9 @@ class Router(object):
                             ipToBeResolved = dst if entry[0] == entry[2] else IPv4Address(entry[2])
                         if ipToBeResolved is not None and ipToBeResolved in unresolved:      
                             #if next hop is found unresolved, pkt will be pushed into queue
-                            task = unresolved[ipToBeResolved]
-                            task.pktToSend.append(pkt)
+                            task_to_enqueue = unresolved[ipToBeResolved]
+                            task_to_enqueue.pktToSend.append(pkt)
+                            task_to_enqueue.incomingPort.append(task.incomingPort[i])
                             print("#"*80)
                             continue
                         self.process_pkt(pkt,dst,ftable,addrCache,taskQueue,unresolved,None,None)
@@ -120,7 +119,7 @@ class Router(object):
             print(pkt)
             print("-")
 
-            arpPkt = pkt.get_header("Arp")          #header extraction here
+            arpHeader = pkt.get_header("Arp")          #header extraction here
             Ipv4Header = pkt.get_header("IPv4")          #header extraction here
             ICMPHeader = pkt.get_header("ICMP")          #header extraction here
             UDPHeader = pkt.get_header("UDP")          #header extraction here
@@ -128,32 +127,32 @@ class Router(object):
             if Ipv4Header is not None:
                 Ipv4Header.ttl -=1;         #decrement ttl
                 
-            if arpPkt is not None:
+            if arpHeader is not None:
                 if gotpkt:
                     log_debug("Got a packet: {}".format(str(pkt)))
-                addrCache[arpPkt.senderprotoaddr] = arpPkt.senderhwaddr
+                addrCache[arpHeader.senderprotoaddr] = arpHeader.senderhwaddr
 
-                if arpPkt.operation == ArpOperation.Request and arpPkt.targetprotoaddr in switchPortIPaddrList:     #answer arp if target is router
-                    targetIntf = self.net.interface_by_ipaddr(arpPkt.targetprotoaddr)
-                    response = create_ip_arp_reply(targetIntf.ethaddr,arpPkt.senderhwaddr,targetIntf.ipaddr,arpPkt.senderprotoaddr)
+                if arpHeader.operation == ArpOperation.Request and arpHeader.targetprotoaddr in switchPortIPaddrList:     #answer arp if target is router
+                    targetIntf = self.net.interface_by_ipaddr(arpHeader.targetprotoaddr)
+                    response = create_ip_arp_reply(targetIntf.ethaddr,arpHeader.senderhwaddr,targetIntf.ipaddr,arpHeader.senderprotoaddr)
                     print("outgoing packet(to port:"+str(dev)+"):")
                     print(response)
                     print("-")
                     self.net.send_packet(dev, response)
-                elif arpPkt.operation == ArpOperation.Reply and arpPkt.targetprotoaddr in switchPortIPaddrList and arpPkt.senderprotoaddr in unresolved:
-                    task = unresolved[arpPkt.senderprotoaddr]
-                    for pktToSend in task.pktToSend:
-                        EthHeader = pktToSend.get_header("Ethernet")
-                        Ipv4Header = pktToSend.get_header("IPv4")
+                elif arpHeader.operation == ArpOperation.Reply and arpHeader.targetprotoaddr in switchPortIPaddrList and arpHeader.senderprotoaddr in unresolved:
+                    task = unresolved[arpHeader.senderprotoaddr]
+                    for i in range(len(task.pktToSend)):
+                        EthHeader = task.pktToSend[i].get_header("Ethernet")
+                        Ipv4Header = task.pktToSend[i].get_header("IPv4")
                         EthHeader.src = self.net.interface_by_name(task.port).ethaddr
-                        EthHeader.dst = arpPkt.senderhwaddr  #update ethernet header's dst field
+                        EthHeader.dst = arpHeader.senderhwaddr  #update ethernet header's dst field
                         print("outgoing packet(to port:"+str(task.port)+"):")
-                        print(pktToSend)
+                        print(task.pktToSend[i])
                         print("-")
-                        self.net.send_packet(task.port, pktToSend)
-                    unresolved.pop(arpPkt.senderprotoaddr)
-                    taskQueue.remove(arpPkt.senderprotoaddr)
-                else:   #drop packet
+                        self.net.send_packet(task.port, task.pktToSend[i])
+                    unresolved.pop(arpHeader.senderprotoaddr)
+                    taskQueue.remove(arpHeader.senderprotoaddr)
+                else:   #drop packet, do nothing
                     pass
             elif Ipv4Header is not None:
                 ipToBeResolved = None
@@ -164,6 +163,8 @@ class Router(object):
                     #if next hop is found unresolved, pkt will be pushed into queue
                     task = unresolved[ipToBeResolved]
                     task.pktToSend.append(pkt)
+                    task.sender.append(Ipv4Header.src)
+                    task.incomingPort.append(dev)
                     print("#"*80)
                     continue
                 ethPacketToSend = Ethernet()
@@ -232,13 +233,13 @@ class Router(object):
         return None
 
     def process_pkt(self,pkt,dst,ftable,addrCache,taskQueue,unresolved,pktSender,dev):
-        #process outgoing ICMP packet
+        #process ICMP packet, send it out or enqueue pkt
         entry = self.get_first_entry(ftable,dst)
         target = IPv4Address(entry[0])
         mask = IPv4Address(entry[1])
-        nextHop = IPv4Address(entry[2])
+        nextHop = IPv4Address(entry[2]) if entry[0]!=entry[2] else dst
         portName = entry[4]
-        if target!=nextHop and nextHop in addrCache:
+        if nextHop in addrCache:
             EthHeader = pkt.get_header("Ethernet")
             EthHeader.src = self.net.interface_by_name(portName).ethaddr
             EthHeader.dst = addrCache[nextHop]  #update ethernet header's dst field
@@ -246,15 +247,7 @@ class Router(object):
             print(pkt)
             print("-")
             self.net.send_packet(portName, pkt)
-        elif target==nextHop and dst in addrCache:
-            EthHeader = pkt.get_header("Ethernet")
-            EthHeader.src = self.net.interface_by_name(portName).ethaddr
-            EthHeader.dst = addrCache[dst]  #update ethernet header's dst field
-            print("outgoing packet(to port:"+str(portName)+"):")
-            print(pkt)
-            print("-")
-            self.net.send_packet(portName, pkt)
-        else: # no IPaddr-HWaddr pair found in cache
+        else: # not found in cache, enqueue pkt
             if target!=nextHop and nextHop not in addrCache:
                 targetIPaddr = nextHop
             else:     #if target net is current net, send arp looking up dst address
