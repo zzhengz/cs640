@@ -7,6 +7,10 @@ from threading import *
 from random import randint
 import time
 
+def dprint(mstr,switch=True):
+    if switch is True:
+        print(mstr)
+
 def switchy_main(net):
 
     my_intf = net.interfaces()
@@ -17,33 +21,61 @@ def switchy_main(net):
         gotpkt = True
         try:
             dev,pkt = net.recv_packet()
-            log_debug("Device is {}".format(dev))
         except NoPackets:
-            log_debug("No packets available in recv_packet")
+            dprint("No packets available in recv_packet")
             gotpkt = False
         except Shutdown:
-            log_debug("Got shutdown signal")
+            dprint("Got shutdown signal")
             break
 
         if gotpkt:
-            log_debug("I got a packet {}".format(pkt))
+            dprint("received packet: {}".format(pkt))
+            
+            
 
         if dev == "middlebox-eth0":
-            log_debug("Received from blaster")
+            dprint("Received from blaster")
+
+            Ipv4Header = pkt.get_header("IPv4")
+            EthHeader = pkt.get_header("Ethernet")
+            
+            if Ipv4Header.src == IPv4Address('192.168.100.1') and Ipv4Header.dst == IPv4Address('192.168.200.1'):
+                EthHeader.src = '40:00:00:00:00:02'
+                EthHeader.dst = '20:00:00:00:00:01'
+                net.send_packet("middlebox-eth1", pkt)
+                dprint("sent packet: {}".format(pkt))
+            else:
+                dprint('pkt dropped: {}'.format(pkt))
+
+
             '''
             Received data packet
             Should I drop it?
             If not, modify headers & send to blastee
             '''
-            net.send_packet("middlebox-eth1", pkt)
         elif dev == "middlebox-eth1":
-            log_debug("Received from blastee")
+            dprint("Received from blastee")
+
+            Ipv4Header = pkt.get_header("IPv4")
+            EthHeader = pkt.get_header("Ethernet")
+
+            if Ipv4Header.src == IPv4Address('192.168.200.1') and Ipv4Header.dst == IPv4Address('192.168.100.1'):
+                EthHeader.src = '40:00:00:00:00:01'
+                EthHeader.dst = '10:00:00:00:00:01'
+                net.send_packet("middlebox-eth0", pkt)
+                dprint("sent packet: {}".format(pkt))
+            else:
+                dprint('pkt dropped: {}'.format(pkt))
+
+
+
+
             '''
             Received ACK
             Modify headers & send to blaster. Not dropping ACK packets!
             net.send_packet("middlebox-eth0", pkt)
             '''
         else:
-            log_debug("Oops :))")
+            dprint("Oops :))")
 
     net.shutdown()
