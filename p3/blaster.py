@@ -62,22 +62,30 @@ def switchy_main(net):
     if blastee_IP is None:
         blastee_IP = '192.168.200.1'
     unACKed = set()
+    pending = []
     LHS=1
     RHS=min(LHS+sender_window-1,num_pkt)
     for i in range(LHS,RHS+1):
-        unACKed.add(i)
+        pending.append(i)
 
-    for i in unACKed:
-        send_pkt = new_pkt(i,length_payload)
-        net.send_packet(devname, send_pkt)
-        dprint("sent packet: {}".format(send_pkt))
-    timeStamp = time.time()
-    timeCounter = timeout
+    #timeStamp = time.time()
+    
     while True:
+        if len(pending)>0:
+            timeCounter = recv_timeout
+            seq_num = pending.pop(0)    #get first seq# to send
+            send_pkt = new_pkt(seq_num,length_payload)
+            net.send_packet(devname, send_pkt)
+            unACKed.add(seq_num)
+            dprint("sent packet: {}".format(send_pkt))
+        else:
+            timeCounter = timeout   #no packet to send, wait coarse timeout
+            
+            for i in range(LHS,RHS+1):
+                if i in unACKed:
+                    pending.append(i)
         gotpkt = True
         try:
-            #Timeout value will be parameterized!
-            dprint("start to wait for packet, timeCounter="+str(timeCounter))
             dev,pkt = net.recv_packet(timeCounter)
 
             #dev,pkt = net.recv_packet(3.0)
@@ -90,19 +98,15 @@ def switchy_main(net):
 
         if gotpkt:
             dprint("received packet: {}".format(pkt))
-            dprint("packet waiting list:"+str(unACKed))
+            dprint("pending packet:"+str(pending) + ", unACKed packets:"+str(unACKed))
             rawData = pkt.get_header('RawPacketContents').to_bytes()
             if len(rawData)!=12:    #if incorrect format for ACK packet
                 dprint("incorrect received length")
-                timeCounter= max(timeCounter-(time.time() -timeStamp),0.001)
-                timeStamp = time.time()
                 continue
 
             seq_num = int.from_bytes(rawData[0:4],'big')
             if seq_num not in unACKed:
                 dprint("seq num not in waiting list")
-                timeCounter= max(timeCounter-(time.time() -timeStamp),0.001)
-                timeStamp = time.time()
                 continue
             unACKed.remove(seq_num)
             if seq_num != LHS:
