@@ -65,16 +65,29 @@ def switchy_main(net):
     pending = []
     LHS=1
     RHS=min(LHS+sender_window-1,num_pkt)
+    
+    
     for i in range(LHS,RHS+1):
         pending.append(i)
 
     #timeStamp = time.time()
-    
+
+    #for print stats
+    startTime = time.time()
+    reTransCount = 0
+    toCount = 0
+    totalLength = 0
+    goodLength = 0
+    notRe = set()
     while True:
         if len(pending)>0:
             timeCounter = recv_timeout
             seq_num = pending.pop(0)    #get first seq# to send
             send_pkt = new_pkt(seq_num,length_payload)
+            totalLength += length_payload.bit_length()
+            if seq_num not in notRe:
+                goodLength += length_payload.bit_length()
+                seq_num.add(seq_num)
             net.send_packet(devname, send_pkt)
             unACKed.add(seq_num)
             dprint("sent packet: {}".format(send_pkt))
@@ -122,6 +135,7 @@ def switchy_main(net):
             if LHS>num_pkt:
                 dprint("all packets sent!")
                 dprint("print the stats here.....")
+                totalTime = time.time() - startTime
                 break
             RHS=min(LHS+sender_window-1,num_pkt)
             for i in range(send_pos,RHS+1):     #send out new added packets in the new window
