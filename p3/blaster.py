@@ -35,6 +35,7 @@ def new_pkt(seq_num, payload_len):
     ip.protocol = IPProtocol.UDP
     
     return e + ip + UDP()+RawPacketContents(seq_num.to_bytes(4, byteorder='big')+payload_len.to_bytes(2, byteorder='big')+(b'z'*payload_len))
+
 def switchy_main(net):
     blastee_mac = '20:00:00:00:00:01'
     middlebox_er_mac = '40:00:00:00:00:01'
@@ -57,114 +58,108 @@ def switchy_main(net):
     length_payload = int(length_payload)
     sender_window = int(sender_window)
     timeout = float(timeout)/1000.0
-    recv_timeout = int(recv_timeout)
+    recv_timeout = float(recv_timeout)/1000.0
     dprint("blastee_IP = %s, num_pkt = %s,length_payload = %s,sender_window = %s,timeout = %s,recv_timeout = %s"%(blastee_IP, num_pkt,length_payload,sender_window,timeout,recv_timeout))
     if blastee_IP is None:
         blastee_IP = '192.168.200.1'
-    unACKed = set()
-    pending = []
+    unACKed = set() #
+    pending = []    # queue keeping all 
     LHS=1
     RHS=min(LHS+sender_window-1,num_pkt)
-    
-    
     for i in range(LHS,RHS+1):
         pending.append(i)
 
-    #timeStamp = time.time()
-
+    timeCounter = recv_timeout      #assume recv_timeout < coarse timeout
+    timeout_boundary = time.time() + timeout
+    start = time.time()
     #for print stats
-    startTime = time.time()
     reTransCount = 0
     toCount = 0
     totalLength = 0
     goodLength = 0
     notRe = set()
     while True:
-        if len(pending)>0:
-            timeCounter = recv_timeout
-            seq_num = pending.pop(0)    #get first seq# to send
-            send_pkt = new_pkt(seq_num,length_payload)
-            totalLength += length_payload.bit_length()
-            if seq_num not in notRe:
-                goodLength += length_payload.bit_length()
-                seq_num.add(seq_num)
-            net.send_packet(devname, send_pkt)
-            unACKed.add(seq_num)
-            dprint("sent packet: {}".format(send_pkt))
-        else:
-            timeCounter = timeout   #no packet to send, wait coarse timeout
-            
+        if time.time() >= timeout_boundary:
+            toCount += 1
+            dprint("at time:{}, reset pending queue".format(time.time()-start))
+            pending.clear()
             for i in range(LHS,RHS+1):
                 if i in unACKed:
                     pending.append(i)
-        gotpkt = True
-        try:
-            dev,pkt = net.recv_packet(timeCounter)
+                    reTransCount += 1
 
-            #dev,pkt = net.recv_packet(3.0)
+            seq_num = pending.pop(0)    #get first seq# to send
+            send_pkt = new_pkt(seq_num,length_payload)
+            net.send_packet(devname, send_pkt)
+            totalLength += length_payload.bit_length()
+            unACKed.add(seq_num)
+            dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
+
+
+            timeCounter = recv_timeout
+            timeout_boundary = time.time() + timeout
+        elif len(pending)>0:
+
+            seq_num = pending.pop(0)    #get first seq# to send
+            send_pkt = new_pkt(seq_num,length_payload)
+            net.send_packet(devname, send_pkt)
+            if seq_num not in notRe:
+                 goodLength += length_payload.bit_length()
+                 seq_num.add(seq_num)
+            unACKed.add(seq_num)
+            dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
+            if len(pending)==0:     #when just sent last packet
+                timeCounter = max(timeout_boundary - time.time(),0.00001)
+            else:   #len(pending)>0
+                timeCounter = min(timeout_boundary - time.time(),recv_timeout)
+        else: # len(pending) == 0
+
+            timeCounter = max(timeout_boundary - time.time(),0.00001)
+
+        gotpkt = True
+
+        try:
+            dprint("pending packet:"+str(pending) + ", unACKed packets:"+str(unACKed))
+            dev,pkt = net.recv_packet(timeCounter)
         except NoPackets:
-            dprint("No packets available in recv_packet")
+            dprint("timeout occurs!")
             gotpkt = False
         except Shutdown:
             dprint("Got ShutDown signal")
             break
 
         if gotpkt:
-            dprint("received packet: {}".format(pkt))
-            dprint("pending packet:"+str(pending) + ", unACKed packets:"+str(unACKed))
+            dprint("at time:{}, received packet: {}".format(time.time()-start,pkt))
             rawData = pkt.get_header('RawPacketContents').to_bytes()
-            if len(rawData)!=12:    #if incorrect format for ACK packet
+            if len(rawData)!=12:    #incorrect format for ACK packet
                 dprint("incorrect received length")
                 continue
 
             seq_num = int.from_bytes(rawData[0:4],'big')
-            if seq_num not in unACKed:
+            if seq_num not in unACKed:      #no corresponding seq_num in unACKed
                 dprint("seq num not in waiting list")
                 continue
             unACKed.remove(seq_num)
+            pending = [x for x in pending if x != seq_num]  #also need to remove tasks in pending queue
             if seq_num != LHS:
-                timeCounter= max(timeCounter-(time.time() -timeStamp),0.001)
-                timeStamp = time.time()
-                continue
+                continue   
 
+            #case seq_num == LHS: will move sender window and reset timer
             send_pos = RHS+1
-            if len(unACKed) ==0:
-                LHS=RHS+1
-            else:
-                LHS = min(unACKed)
-            if LHS>num_pkt:
-                dprint("all packets sent!")
+                       
+            LHS = min(unACKed) if len(unACKed) > 0 else RHS+1 #move LHS
+            if LHS>num_pkt:     # when all pkts are sent
+                dprint("at time:{},all packets sent!".format(time.time()-start))
+                totalTime = time.time()-start
                 dprint("print the stats here.....")
-                totalTime = time.time() - startTime
+                dprint("total time:{}, # of reTX: {}, # of cTO".format(time.time()-start,reTransCount,toCount))
+                dprint("Throughput:{}, goodput: {}".format(totalLength/totalTime , goodLength/totalTime))
                 break
-            RHS=min(LHS+sender_window-1,num_pkt)
+            RHS=min(LHS+sender_window-1,num_pkt) #move RHS
             for i in range(send_pos,RHS+1):     #send out new added packets in the new window
-                unACKed.add(i)
-                send_pkt = new_pkt(i,length_payload)
-                net.send_packet(devname, send_pkt)
-                dprint("sent packet: {}".format(send_pkt))
-            timeStamp = time.time()     #reset timer
-            timeCounter = timeout
-                
+                pending.append(i)
+            timeCounter = recv_timeout 
+            timeout_boundary = time.time() + timeout     #reset coarse timeout
 
-
-        else:
-            dprint("Didn't receive anything")
-
-            for i in unACKed:
-                send_pkt = new_pkt(i,length_payload)
-                net.send_packet(devname, send_pkt)
-                dprint("sent packet: {}".format(send_pkt))
-            timeStamp = time.time()     #reset timer
-            timeCounter = timeout
-            '''
-            Creating the headers for the packet
-            '''
-            #pkt = Ethernet() + IPv4() + UDP()
-            #pkt[1].protocol = IPProtocol.UDP
-
-            '''
-            Do other things here and send packet
-            '''
 
     net.shutdown()
