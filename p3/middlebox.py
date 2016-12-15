@@ -4,6 +4,7 @@ from switchyard.lib.address import *
 from switchyard.lib.packet import *
 from switchyard.lib.common import *
 from threading import *
+import random
 from random import randint
 import time
 
@@ -11,12 +12,25 @@ def dprint(mstr,switch=True):
     if switch is True:
         print(mstr)
 
+def read_params():
+
+    f = open('middlebox_params.txt', 'r')
+    for line in f:
+        params = line.strip('\n').split(' ')
+        if '-d' in params:
+            idx = params.index('-d')
+            if idx+1<len(params):   #make sure index inside boundary
+                return params[idx+1]
+    return None
+
 def switchy_main(net):
 
     my_intf = net.interfaces()
     mymacs = [intf.ethaddr for intf in my_intf]
     myips = [intf.ipaddr for intf in my_intf]
 
+    drop_rate = float(read_params())
+    dprint("drop_rate:"+str(drop_rate))
     start = time.time()
     while True:
         gotpkt = True
@@ -36,6 +50,8 @@ def switchy_main(net):
 
         if dev == "middlebox-eth0":
             dprint("at time:{}, receive packet from blaster: {}".format(time.time()-start,pkt)) 
+            if random.uniform(0, 1) <= drop_rate:   #drop packet
+                continue
 
             Ipv4Header = pkt.get_header("IPv4")
             EthHeader = pkt.get_header("Ethernet")

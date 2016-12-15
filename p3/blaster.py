@@ -63,7 +63,7 @@ def switchy_main(net):
     if blastee_IP is None:
         blastee_IP = '192.168.200.1'
     unACKed = set() #
-    pending = []    # queue keeping all 
+    pending = []    # queue keeping all pending packet
     LHS=1
     RHS=min(LHS+sender_window-1,num_pkt)
     for i in range(LHS,RHS+1):
@@ -72,6 +72,8 @@ def switchy_main(net):
     timeCounter = recv_timeout      #assume recv_timeout < coarse timeout
     timeout_boundary = time.time() + timeout
     start = time.time()
+    cnt_sent = 0
+    cnt_coarseTO = 0
     while True:
         if time.time() >= timeout_boundary:
             dprint("at time:{}, reset pending queue".format(time.time()-start))
@@ -85,10 +87,12 @@ def switchy_main(net):
             net.send_packet(devname, send_pkt)
             unACKed.add(seq_num)
             dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
-
-
+            cnt_sent += 1
+            
             timeCounter = recv_timeout
             timeout_boundary = time.time() + timeout
+
+            cnt_coarseTO += 1
         elif len(pending)>0:
 
             seq_num = pending.pop(0)    #get first seq# to send
@@ -96,6 +100,7 @@ def switchy_main(net):
             net.send_packet(devname, send_pkt)
             unACKed.add(seq_num)
             dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
+            cnt_sent += 1
             if len(pending)==0:     #when just sent last packet
                 timeCounter = max(timeout_boundary - time.time(),0.00001)
             else:   #len(pending)>0
@@ -137,8 +142,19 @@ def switchy_main(net):
                        
             LHS = min(unACKed) if len(unACKed) > 0 else RHS+1 #move LHS
             if LHS>num_pkt:     # when all pkts are sent
-                dprint("at time:{},all packets sent!".format(time.time()-start))
+                finish_time = time.time()
+                if finish_time <= start:
+                    finish_time = start + 0.0001    #avoid divide-by-zero
+                dprint("at time:{},all packets sent!".format(finish_time-start))
+
                 dprint("print the stats here.....")
+                #notice here dprint vs print
+                print("Total TX time (in seconds): "+str(finish_time-start))
+                print("Number of reTX: "+str(cnt_sent - num_pkt))
+                print("Number of coarse TOs: "+str(cnt_coarseTO))
+                print("Throughput (Bps): "+str((cnt_sent * length_payload)/(finish_time-start)))
+                print("Goodput (Bps): "+str((num_pkt * length_payload)/(finish_time-start)))
+
                 break
             RHS=min(LHS+sender_window-1,num_pkt) #move RHS
             for i in range(send_pos,RHS+1):     #send out new added packets in the new window
