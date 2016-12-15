@@ -91,7 +91,7 @@ def switchy_main(net):
             seq_num = pending.pop(0)    #get first seq# to send
             send_pkt = new_pkt(seq_num,length_payload)
             net.send_packet(devname, send_pkt)
-            totalLength += length_payload.bit_length()
+            totalLength += length_payload
             unACKed.add(seq_num)
             dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
 
@@ -104,7 +104,7 @@ def switchy_main(net):
             send_pkt = new_pkt(seq_num,length_payload)
             net.send_packet(devname, send_pkt)
             if seq_num not in notRe:
-                 goodLength += length_payload.bit_length()
+                 goodLength += length_payload
                  seq_num.add(seq_num)
             unACKed.add(seq_num)
             dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
