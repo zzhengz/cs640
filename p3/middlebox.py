@@ -16,7 +16,10 @@ def switchy_main(net):
     my_intf = net.interfaces()
     mymacs = [intf.ethaddr for intf in my_intf]
     myips = [intf.ipaddr for intf in my_intf]
-
+    f = open('middlebox_param.txt','r')
+    line = f.readline()
+    token = line.strip('\n').split(' ')
+    DP = token[1]
     while True:
         gotpkt = True
         try:
@@ -42,8 +45,12 @@ def switchy_main(net):
             if Ipv4Header.src == IPv4Address('192.168.100.1') and Ipv4Header.dst == IPv4Address('192.168.200.1'):
                 EthHeader.src = '40:00:00:00:00:02'
                 EthHeader.dst = '20:00:00:00:00:01'
-                net.send_packet("middlebox-eth1", pkt)
-                dprint("sent packet: {}".format(pkt))
+                P = random.randint(1,100)
+                if(P > DP * 100):
+                    net.send_packet("middlebox-eth1", pkt)
+                    dprint("sent packet: {}".format(pkt))
+                else:
+                    dprint('pkt dropped: {}'.format(pkt))
             else:
                 dprint('pkt dropped: {}'.format(pkt))
 
