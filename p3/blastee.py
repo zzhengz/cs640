@@ -35,6 +35,7 @@ def switchy_main(net):
     my_interfaces = net.interfaces()
     mymacs = [intf.ethaddr for intf in my_interfaces]
 
+    start = time.time()
     while True:
         gotpkt = True
         try:
@@ -47,7 +48,7 @@ def switchy_main(net):
             break
 
         if gotpkt:
-            dprint("received packet: {}".format(pkt))
+            dprint("at time:{}, receive packet: {}".format(time.time()-start,pkt)) 
             net.send_packet('blastee-eth0', new_pkt(pkt))
 
     net.shutdown()

@@ -5,6 +5,7 @@
 
 #vim recover file
 *.py~
+*.txt~
 
 *.md~
 

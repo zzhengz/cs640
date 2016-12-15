@@ -17,6 +17,7 @@ def switchy_main(net):
     mymacs = [intf.ethaddr for intf in my_intf]
     myips = [intf.ipaddr for intf in my_intf]
 
+    start = time.time()
     while True:
         gotpkt = True
         try:
@@ -34,7 +35,7 @@ def switchy_main(net):
             
 
         if dev == "middlebox-eth0":
-            dprint("Received from blaster")
+            dprint("at time:{}, receive packet from blaster: {}".format(time.time()-start,pkt)) 
 
             Ipv4Header = pkt.get_header("IPv4")
             EthHeader = pkt.get_header("Ethernet")
@@ -43,9 +44,9 @@ def switchy_main(net):
                 EthHeader.src = '40:00:00:00:00:02'
                 EthHeader.dst = '20:00:00:00:00:01'
                 net.send_packet("middlebox-eth1", pkt)
-                dprint("sent packet: {}".format(pkt))
+                dprint("at time:{}, sent packet: {}".format(time.time()-start,pkt))
             else:
-                dprint('pkt dropped: {}'.format(pkt))
+                dprint("at time:{}, drop packet: {}".format(time.time()-start,pkt))
 
 
             '''
@@ -54,7 +55,7 @@ def switchy_main(net):
             If not, modify headers & send to blastee
             '''
         elif dev == "middlebox-eth1":
-            dprint("Received from blastee")
+            dprint("at time:{}, receive packet from blastee: {}".format(time.time()-start,pkt)) 
 
             Ipv4Header = pkt.get_header("IPv4")
             EthHeader = pkt.get_header("Ethernet")
@@ -63,18 +64,11 @@ def switchy_main(net):
                 EthHeader.src = '40:00:00:00:00:01'
                 EthHeader.dst = '10:00:00:00:00:01'
                 net.send_packet("middlebox-eth0", pkt)
-                dprint("sent packet: {}".format(pkt))
+                dprint("at time:{}, sent packet: {}".format(time.time()-start,pkt))
             else:
-                dprint('pkt dropped: {}'.format(pkt))
+                dprint("at time:{}, drop packet: {}".format(time.time()-start,pkt))
 
 
-
-
-            '''
-            Received ACK
-            Modify headers & send to blaster. Not dropping ACK packets!
-            net.send_packet("middlebox-eth0", pkt)
-            '''
         else:
             dprint("Oops :))")
 
