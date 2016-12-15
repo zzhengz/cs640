@@ -68,27 +68,29 @@ def switchy_main(net):
     for i in range(LHS,RHS+1):
         pending.append(i)
 
-    #timeStamp = time.time()
-    
+    timeStamp = time.time()
+    coarseWaiting = False
     while True:
-        if len(pending)>0:
+        if len(pending)==0:
+            timeCounter = timeout   #no packet to send, wait coarse timeout
+            
+            for i in range(LHS,RHS+1):
+                if i in unACKed:
+                    pending.append(i)
+            timeStamp = time.time()
+            coarseWaiting = True
+        elif coarseWaiting is False:
             timeCounter = recv_timeout
             seq_num = pending.pop(0)    #get first seq# to send
             send_pkt = new_pkt(seq_num,length_payload)
             net.send_packet(devname, send_pkt)
             unACKed.add(seq_num)
             dprint("sent packet: {}".format(send_pkt))
-        else:
-            timeCounter = timeout   #no packet to send, wait coarse timeout
-            
-            for i in range(LHS,RHS+1):
-                if i in unACKed:
-                    pending.append(i)
+
         gotpkt = True
+
         try:
             dev,pkt = net.recv_packet(timeCounter)
-
-            #dev,pkt = net.recv_packet(3.0)
         except NoPackets:
             dprint("No packets available in recv_packet")
             gotpkt = False
@@ -100,20 +102,25 @@ def switchy_main(net):
             dprint("received packet: {}".format(pkt))
             dprint("pending packet:"+str(pending) + ", unACKed packets:"+str(unACKed))
             rawData = pkt.get_header('RawPacketContents').to_bytes()
-            if len(rawData)!=12:    #if incorrect format for ACK packet
+            if len(rawData)!=12:    #incorrect format for ACK packet
                 dprint("incorrect received length")
+                if coarseWaiting is True:
+                    timeCounter = max(timeout-(time.time()-timeStamp),0.001)  # resume rest of coarse-timeout
                 continue
 
             seq_num = int.from_bytes(rawData[0:4],'big')
-            if seq_num not in unACKed:
+            if seq_num not in unACKed:      #no corresponding seq_num in unACKed
                 dprint("seq num not in waiting list")
+                if coarseWaiting is True:
+                    timeCounter = max(timeout-(time.time()-timeStamp),0.001)  # resume rest of coarse-timeout
                 continue
             unACKed.remove(seq_num)
             if seq_num != LHS:
-                timeCounter= max(timeCounter-(time.time() -timeStamp),0.001)
-                timeStamp = time.time()
-                continue
+                if coarseWaiting is True:
+                    timeCounter = max(timeout-(time.time()-timeStamp),0.001)  # resume rest of coarse-timeout
+                continue   
 
+            #case seq_num == LHS: will move sender window and reset timer
             send_pos = RHS+1
             if len(unACKed) ==0:
                 LHS=RHS+1
@@ -123,34 +130,13 @@ def switchy_main(net):
                 dprint("all packets sent!")
                 dprint("print the stats here.....")
                 break
-            RHS=min(LHS+sender_window-1,num_pkt)
+            RHS=min(LHS+sender_window-1,num_pkt) #move RHS
             for i in range(send_pos,RHS+1):     #send out new added packets in the new window
-                unACKed.add(i)
-                send_pkt = new_pkt(i,length_payload)
-                net.send_packet(devname, send_pkt)
-                dprint("sent packet: {}".format(send_pkt))
-            timeStamp = time.time()     #reset timer
+                pending.append(i)
+            coarseWaiting = False
             timeCounter = timeout
-                
-
-
         else:
-            dprint("Didn't receive anything")
+            coarseWaiting = False
 
-            for i in unACKed:
-                send_pkt = new_pkt(i,length_payload)
-                net.send_packet(devname, send_pkt)
-                dprint("sent packet: {}".format(send_pkt))
-            timeStamp = time.time()     #reset timer
-            timeCounter = timeout
-            '''
-            Creating the headers for the packet
-            '''
-            #pkt = Ethernet() + IPv4() + UDP()
-            #pkt[1].protocol = IPProtocol.UDP
-
-            '''
-            Do other things here and send packet
-            '''
 
     net.shutdown()
