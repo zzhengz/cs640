@@ -8,7 +8,7 @@ import random
 from random import randint
 import time
 
-def dprint(mstr,switch=True):
+def dprint(mstr,switch=False):
     if switch is True:
         print(mstr)
 
@@ -43,14 +43,14 @@ def switchy_main(net):
             dprint("Got shutdown signal")
             break
 
-        if gotpkt:
-            dprint("received packet: {}".format(pkt))
-            
+        if gotpkt is False:
+            continue
             
 
         if dev == "middlebox-eth0":
-            dprint("at time:{}, receive packet from blaster: {}".format(time.time()-start,pkt)) 
+            dprint("at time:{}, received packet from blaster:{}".format(time.time()-start,pkt))
             if random.uniform(0, 1) <= drop_rate:   #drop packet
+                dprint("at time:{}, drop packet: {}".format(time.time()-start,pkt))
                 continue
 
             Ipv4Header = pkt.get_header("IPv4")

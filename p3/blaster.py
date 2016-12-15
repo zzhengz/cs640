@@ -33,8 +33,8 @@ def new_pkt(seq_num, payload_len):
     ip.srcip = '192.168.100.1'
     ip.dstip = '192.168.200.1'
     ip.protocol = IPProtocol.UDP
-    
-    return e + ip + UDP()+RawPacketContents(seq_num.to_bytes(4, byteorder='big')+payload_len.to_bytes(2, byteorder='big')+(b'z'*payload_len))
+    content = RawPacketContents(seq_num.to_bytes(4, byteorder='big')+payload_len.to_bytes(2, byteorder='big')+(b'z'*payload_len))
+    return e + ip + UDP()+ content
 
 def switchy_main(net):
     blastee_mac = '20:00:00:00:00:01'
@@ -62,7 +62,7 @@ def switchy_main(net):
     dprint("blastee_IP = %s, num_pkt = %s,length_payload = %s,sender_window = %s,timeout = %s,recv_timeout = %s"%(blastee_IP, num_pkt,length_payload,sender_window,timeout,recv_timeout))
     if blastee_IP is None:
         blastee_IP = '192.168.200.1'
-    unACKed = set() #
+    ACKed = set() #
     pending = []    # queue keeping all pending packet
     LHS=1
     RHS=min(LHS+sender_window-1,num_pkt)
@@ -79,14 +79,13 @@ def switchy_main(net):
             dprint("at time:{}, reset pending queue".format(time.time()-start))
             pending.clear()
             for i in range(LHS,RHS+1):
-                if i in unACKed:
+                if i not in ACKed:
                     pending.append(i)
 
             seq_num = pending.pop(0)    #get first seq# to send
             send_pkt = new_pkt(seq_num,length_payload)
             net.send_packet(devname, send_pkt)
-            unACKed.add(seq_num)
-            dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
+            dprint("at time:{}, sent packet: {}".format(time.time()-start,seq_num))
             cnt_sent += 1
             
             timeCounter = recv_timeout
@@ -98,8 +97,8 @@ def switchy_main(net):
             seq_num = pending.pop(0)    #get first seq# to send
             send_pkt = new_pkt(seq_num,length_payload)
             net.send_packet(devname, send_pkt)
-            unACKed.add(seq_num)
-            dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
+            #dprint("at time:{}, sent packet: {}".format(time.time()-start,send_pkt))
+            dprint("at time:{}, sent packet: {}".format(time.time()-start,seq_num))
             cnt_sent += 1
             if len(pending)==0:     #when just sent last packet
                 timeCounter = max(timeout_boundary - time.time(),0.00001)
@@ -112,7 +111,7 @@ def switchy_main(net):
         gotpkt = True
 
         try:
-            dprint("pending packet:"+str(pending) + ", unACKed packets:"+str(unACKed))
+            dprint("pending packet:"+str(pending) + ", ACKed packets:"+str(ACKed))
             dev,pkt = net.recv_packet(timeCounter)
         except NoPackets:
             dprint("timeout occurs!")
@@ -122,17 +121,17 @@ def switchy_main(net):
             break
 
         if gotpkt:
-            dprint("at time:{}, received packet: {}".format(time.time()-start,pkt))
             rawData = pkt.get_header('RawPacketContents').to_bytes()
             if len(rawData)!=12:    #incorrect format for ACK packet
-                dprint("incorrect received length")
+                dprint("at time:{}, incorrect received length".format(time.time()-start))
                 continue
 
             seq_num = int.from_bytes(rawData[0:4],'big')
-            if seq_num not in unACKed:      #no corresponding seq_num in unACKed
-                dprint("seq num not in waiting list")
+            dprint("at time:{}, received packet:{}".format(time.time()-start,seq_num))
+            if seq_num in ACKed:      #seq_num already in ACKed
+                dprint("seq num already acked")
                 continue
-            unACKed.remove(seq_num)
+            ACKed.add(seq_num)
             pending = [x for x in pending if x != seq_num]  #also need to remove tasks in pending queue
             if seq_num != LHS:
                 continue   
@@ -140,7 +139,7 @@ def switchy_main(net):
             #case seq_num == LHS: will move sender window and reset timer
             send_pos = RHS+1
                        
-            LHS = min(unACKed) if len(unACKed) > 0 else RHS+1 #move LHS
+            LHS = max(ACKed)+1 if len(ACKed) > 0 else 0 #move LHS
             if LHS>num_pkt:     # when all pkts are sent
                 finish_time = time.time()
                 if finish_time <= start:

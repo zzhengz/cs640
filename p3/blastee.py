@@ -6,7 +6,7 @@ from switchyard.lib.common import *
 from threading import *
 import time
 
-def dprint(mstr,switch=True):
+def dprint(mstr,switch=False):
     if switch is True:
         print(mstr)
 
